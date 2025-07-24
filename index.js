@@ -25,3 +25,6 @@ app.get('/produtos', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Servidor rodando: http://localhost:${PORT}/produtos`);
 });
+app.get('/', (req, res) => {
+  res.send('API Tiny funcionando!');
+});
