@@ -28,3 +28,53 @@ app.listen(PORT, () => {
 app.get('/', (req, res) => {
   res.send('API Tiny funcionando!');
 });
+app.get('/anuncio', async (req, res) => {
+  const idEcommerce = req.query.idEcommerce;
+
+  if (!idEcommerce) {
+    return res.status(400).json({ erro: 'Informe o idEcommerce como parâmetro ?idEcommerce=' });
+  }
+
+  try {
+    // 1. Buscar todos os produtos
+    const produtosResp = await axios.post(
+      `https://api.tiny.com.br/api2/produtos.pesquisa.php?token=${TINY_TOKEN}&formato=json`
+    );
+
+    const produtos = produtosResp.data.retorno.produtos || [];
+
+    for (const item of produtos) {
+      const idProduto = item.produto.id;
+
+      // 2. Buscar os anúncios do produto
+      const anunciosResp = await axios.post(
+        `https://api.tiny.com.br/api2/produtos.anuncios.listar.php?token=${TINY_TOKEN}&formato=json`,
+        new URLSearchParams({ id: idProduto }).toString(),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        }
+      );
+
+      const anuncios = anunciosResp.data.retorno.anuncios || [];
+
+      // 3. Verificar se algum anúncio tem o idEcommerce buscado
+      const anuncioEncontrado = anuncios.find(anuncio => anuncio.anuncio.idEcommerce === idEcommerce);
+
+      if (anuncioEncontrado) {
+        return res.json({
+          produto: item.produto,
+          anuncio: anuncioEncontrado.anuncio
+        });
+      }
+    }
+
+    res.status(404).json({ erro: `Nenhum anúncio encontrado com idEcommerce = ${idEcommerce}` });
+
+  } catch (error) {
+    console.error('Erro ao buscar anúncio por idEcommerce:', error.message);
+    res.status(500).json({ erro: 'Erro ao buscar anúncio' });
+  }
+});
+
