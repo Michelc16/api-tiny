@@ -1,42 +1,62 @@
+const express = require('express');
+const axios = require('axios');
+const app = express();
+
+const PORT = process.env.PORT || 3001;
+const TINY_TOKEN = 'f4289e0518d5c8c6a4efb59320abf02fa491bda2';
+
 app.get('/produtos', async (req, res) => {
   try {
-    const filtroNome = req.query.nome || '';  // ?nome=notebook
-    const filtroTipo = req.query.tipo || '';  // ?tipo=Periférico
-
-    let produtosTotais = [];
-    let pagina = 1;
-    let totalDePaginas = 1;
-
-    do {
-      // Monta o corpo da requisição, incluindo filtro por nome se passado
-      const params = new URLSearchParams({
+    // 1. Buscar a primeira página para obter total de páginas
+    const primeiraResp = await axios.post(
+      `https://api.tiny.com.br/api2/produtos.pesquisa.php`,
+      new URLSearchParams({
         token: TINY_TOKEN,
         formato: 'json',
-        pagina: pagina.toString(),
+        pagina: '1',
         limite: '100',
-      });
+      }).toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
 
-      if (filtroNome) {
-        params.append('nome', filtroNome);
+    const retornoPrimeira = primeiraResp.data.retorno;
+    if (!retornoPrimeira.produtos) return res.json([]);
+
+    const totalDePaginas = parseInt(retornoPrimeira.totalDePaginas) || 1;
+    let produtosTotais = retornoPrimeira.produtos;
+
+    if (totalDePaginas > 1) {
+      // 2. Criar array de promises para as demais páginas
+      const promessas = [];
+
+      for (let pagina = 2; pagina <= totalDePaginas; pagina++) {
+        const params = new URLSearchParams({
+          token: TINY_TOKEN,
+          formato: 'json',
+          pagina: pagina.toString(),
+          limite: '100',
+        }).toString();
+
+        promessas.push(
+          axios.post(
+            `https://api.tiny.com.br/api2/produtos.pesquisa.php`,
+            params,
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+          )
+        );
       }
-      if (filtroTipo) {
-        params.append('tipo', filtroTipo);
+
+      // 3. Executar todas as chamadas paralelamente
+      const respostas = await Promise.all(promessas);
+
+      // 4. Juntar os produtos das páginas restantes
+      for (const resp of respostas) {
+        const prods = resp.data.retorno.produtos || [];
+        produtosTotais = produtosTotais.concat(prods);
       }
+    }
 
-      const response = await axios.post(
-        'https://api.tiny.com.br/api2/produtos.pesquisa.php',
-        params.toString(),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-      );
-
-      const retorno = response.data.retorno;
-      if (!retorno.produtos) break;
-
-      produtosTotais = produtosTotais.concat(retorno.produtos);
-      totalDePaginas = parseInt(retorno.totalDePaginas) || 1;
-      pagina++;
-    } while (pagina <= totalDePaginas);
-
+    // 5. Mapear para retorno limpo
     const produtosLimpos = produtosTotais.map(p => ({
       id: p.produto.id,
       codigo: p.produto.codigo,
@@ -57,4 +77,8 @@ app.get('/produtos', async (req, res) => {
     console.error('Erro ao buscar produtos do Tiny:', error.message);
     res.status(500).json({ erro: 'Erro ao buscar produtos do Tiny' });
   }
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em: http://localhost:${PORT}/produtos`);
 });
