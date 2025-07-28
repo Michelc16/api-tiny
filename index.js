@@ -11,13 +11,27 @@ app.get('/', (req, res) => {
 
 app.get('/produtos', async (req, res) => {
   try {
-    const response = await axios.post(
-      `https://api.tiny.com.br/api2/produtos.pesquisa.php?token=${TINY_TOKEN}&formato=json&pagina=1&limite=100`
-    );
+    let produtosTotais = [];
+    let pagina = 1;
+    let totalDePaginas = 1;
 
-    const produtosTiny = response.data.retorno.produtos || [];
+    do {
+      const response = await axios.post(
+        `https://api.tiny.com.br/api2/produtos.pesquisa.php?token=${TINY_TOKEN}&formato=json&pagina=${pagina}&limite=100`
+      );
 
-    const produtosLimpos = produtosTiny.map(p => ({
+      const retorno = response.data.retorno;
+
+      if (!retorno.produtos) break;
+
+      produtosTotais = produtosTotais.concat(retorno.produtos);
+
+      totalDePaginas = parseInt(retorno.totalDePaginas) || 1;
+      pagina++;
+    } while (pagina <= totalDePaginas);
+
+    // Mapear apenas os campos desejados
+    const produtosLimpos = produtosTotais.map(p => ({
       id: p.produto.id,
       codigo: p.produto.codigo,
       nome: p.produto.nome,
