@@ -1,36 +1,42 @@
-const express = require('express');
-const axios = require('axios');
-const app = express();
-
-const PORT = process.env.PORT || 3001;
-const TINY_TOKEN = 'f4289e0518d5c8c6a4efb59320abf02fa491bda2';
-
-app.get('/', (req, res) => {
-  res.send('API Tiny funcionando!');
-});
-
 app.get('/produtos', async (req, res) => {
   try {
+    const filtroNome = req.query.nome || '';  // ?nome=notebook
+    const filtroTipo = req.query.tipo || '';  // ?tipo=Periférico
+
     let produtosTotais = [];
     let pagina = 1;
     let totalDePaginas = 1;
 
     do {
+      // Monta o corpo da requisição, incluindo filtro por nome se passado
+      const params = new URLSearchParams({
+        token: TINY_TOKEN,
+        formato: 'json',
+        pagina: pagina.toString(),
+        limite: '100',
+      });
+
+      if (filtroNome) {
+        params.append('nome', filtroNome);
+      }
+      if (filtroTipo) {
+        params.append('tipo', filtroTipo);
+      }
+
       const response = await axios.post(
-        `https://api.tiny.com.br/api2/produtos.pesquisa.php?token=${TINY_TOKEN}&formato=json&pagina=${pagina}&limite=100`
+        'https://api.tiny.com.br/api2/produtos.pesquisa.php',
+        params.toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
       );
 
       const retorno = response.data.retorno;
-
       if (!retorno.produtos) break;
 
       produtosTotais = produtosTotais.concat(retorno.produtos);
-
       totalDePaginas = parseInt(retorno.totalDePaginas) || 1;
       pagina++;
     } while (pagina <= totalDePaginas);
 
-    // Mapear apenas os campos desejados
     const produtosLimpos = produtosTotais.map(p => ({
       id: p.produto.id,
       codigo: p.produto.codigo,
@@ -51,8 +57,4 @@ app.get('/produtos', async (req, res) => {
     console.error('Erro ao buscar produtos do Tiny:', error.message);
     res.status(500).json({ erro: 'Erro ao buscar produtos do Tiny' });
   }
-});
-
-app.listen(PORT, () => {
-  console.log(`Servidor rodando em: http://localhost:${PORT}/produtos`);
 });
