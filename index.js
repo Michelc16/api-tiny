@@ -79,8 +79,9 @@ app.get('/produtos', async (req, res) => {
   }
 });
 
+app.get('/', (req, res) => {
+  res.send('API Tiny está online 🚀');
+});
 app.listen(PORT, () => {
   console.log(`Servidor rodando em: http://localhost:${PORT}/produtos`);
-  app.get('/', (req, res) => {
-  res.send('API Tiny está online 🚀');
 });
