@@ -8,8 +8,8 @@ const TINY_TOKEN = 'f4289e0518d5c8c6a4efb59320abf02fa491bda2';
 app.get('/produtos', async (req, res) => {
   try {
     const nomeFiltro = req.query.nome?.toLowerCase() || '';
+    const precoDesejado = parseFloat(req.query.preco);
 
-    // Buscar a primeira página com filtro
     const primeiraResp = await axios.post(
       `https://api.tiny.com.br/api2/produtos.pesquisa.php`,
       new URLSearchParams({
@@ -56,14 +56,22 @@ app.get('/produtos', async (req, res) => {
       }
     }
 
-    // Limita a 5 produtos e retorna apenas nome, preço e estoque
-    const produtosFiltrados = produtosTotais.slice(0, 5).map(p => ({
+    const produtosLimpos = produtosTotais.map(p => ({
       nome: p.produto.nome,
-      preco: p.produto.preco,
-      estoque: p.produto.estoque
-    }));
+      preco: parseFloat(p.produto.preco),
+      estoque: parseInt(p.produto.estoque) || 0
+    })).filter(p => !isNaN(p.preco) && p.estoque > 0);
 
-    res.json(produtosFiltrados);
+    // Se o preço foi informado, ordenar por "distância" do preço desejado
+    const produtosOrdenados = !isNaN(precoDesejado)
+      ? produtosLimpos.sort((a, b) =>
+          Math.abs(a.preco - precoDesejado) - Math.abs(b.preco - precoDesejado)
+        )
+      : produtosLimpos.sort((a, b) => a.preco - b.preco);
+
+    const top3 = produtosOrdenados.slice(0, 3);
+
+    res.json(top3);
   } catch (error) {
     console.error('Erro ao buscar produtos do Tiny:', error.message);
     res.status(500).json({ erro: 'Erro ao buscar produtos do Tiny' });
