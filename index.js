@@ -9,7 +9,7 @@ app.get('/produtos', async (req, res) => {
   try {
     const nomeFiltro = req.query.nome?.toLowerCase() || '';
 
-    // 1. Buscar a primeira página com filtro no nome
+    // Buscar a primeira página com filtro
     const primeiraResp = await axios.post(
       `https://api.tiny.com.br/api2/produtos.pesquisa.php`,
       new URLSearchParams({
@@ -17,7 +17,7 @@ app.get('/produtos', async (req, res) => {
         formato: 'json',
         pagina: '1',
         limite: '100',
-        pesquisa: nomeFiltro  // <-- filtro aplicado diretamente aqui
+        pesquisa: nomeFiltro
       }).toString(),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
@@ -37,7 +37,7 @@ app.get('/produtos', async (req, res) => {
           formato: 'json',
           pagina: pagina.toString(),
           limite: '100',
-          pesquisa: nomeFiltro  // <-- aplicar o mesmo filtro nas demais páginas
+          pesquisa: nomeFiltro
         }).toString();
 
         promessas.push(
@@ -56,23 +56,14 @@ app.get('/produtos', async (req, res) => {
       }
     }
 
-    // 5. Mapear e retornar os produtos encontrados
-    const produtosLimpos = produtosTotais.map(p => ({
-      id: p.produto.id,
-      codigo: p.produto.codigo,
+    // Limita a 5 produtos e retorna apenas nome, preço e estoque
+    const produtosFiltrados = produtosTotais.slice(0, 5).map(p => ({
       nome: p.produto.nome,
       preco: p.produto.preco,
-      preco_promocional: p.produto.preco_promocional,
-      marca: p.produto.marca,
-      tipo: p.produto.tipo,
-      situacao: p.produto.situacao,
-      unidade: p.produto.unidade,
-      ncm: p.produto.ncm,
-      gtin: p.produto.gtin,
       estoque: p.produto.estoque
     }));
 
-    res.json(produtosLimpos);
+    res.json(produtosFiltrados);
   } catch (error) {
     console.error('Erro ao buscar produtos do Tiny:', error.message);
     res.status(500).json({ erro: 'Erro ao buscar produtos do Tiny' });
@@ -82,6 +73,7 @@ app.get('/produtos', async (req, res) => {
 app.get('/', (req, res) => {
   res.send('API Tiny está online 🚀');
 });
+
 app.listen(PORT, () => {
   console.log(`Servidor rodando em: http://localhost:${PORT}/produtos`);
 });
