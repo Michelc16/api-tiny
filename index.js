@@ -55,7 +55,7 @@ app.get('/produtos', async (req, res) => {
         estoque: p.estoque
       }));
 
-    res.json(produtosFiltrados);
+    res.json({produto: produtosFiltrados});
   } catch (error) {
     console.error('Erro ao buscar produtos do Tiny:', error.message);
     res.status(500).json({ erro: 'Erro ao buscar produtos do Tiny' });
