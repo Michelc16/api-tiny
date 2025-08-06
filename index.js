@@ -8,8 +8,7 @@ const TINY_TOKEN = 'f4289e0518d5c8c6a4efb59320abf02fa491bda2';
 app.get('/produtos', async (req, res) => {
   try {
     const nomeFiltro = req.query.nome?.toLowerCase() || '';
-    const precoParam = parseFloat(req.query.preco);
-    const precoInformado = isNaN(precoParam) ? null : precoParam;
+    const precoDesejado = parseFloat(req.query.preco);
 
     const primeiraResp = await axios.post(
       `https://api.tiny.com.br/api2/produtos.pesquisa.php`,
@@ -23,69 +22,42 @@ app.get('/produtos', async (req, res) => {
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
 
-    const retornoPrimeira = primeiraResp.data.retorno;
-    if (!retornoPrimeira.produtos) return res.json([]);
+    const retorno = primeiraResp.data.retorno;
+    if (!retorno.produtos) return res.json([]);
 
-    let produtosTotais = retornoPrimeira.produtos;
-    const totalDePaginas = parseInt(retornoPrimeira.totalDePaginas) || 1;
+    const produtosFiltrados = retorno.produtos
+      .map(p => p.produto)
+      .filter(p => {
+        const nome = p.nome?.toLowerCase() || '';
+        const nomeCond = nome.includes(nomeFiltro);
 
-    if (totalDePaginas > 1) {
-      const promessas = [];
+        if (!precoDesejado || isNaN(precoDesejado)) return nomeCond;
 
-      for (let pagina = 2; pagina <= totalDePaginas; pagina++) {
-        const params = new URLSearchParams({
-          token: TINY_TOKEN,
-          formato: 'json',
-          pagina: pagina.toString(),
-          limite: '100',
-          pesquisa: nomeFiltro
-        }).toString();
+        const preco = parseFloat(p.preco);
+        const margem = precoDesejado * 0.15;
+        const precoCond = preco >= (precoDesejado - margem) && preco <= (precoDesejado + margem);
 
-        promessas.push(
-          axios.post(
-            `https://api.tiny.com.br/api2/produtos.pesquisa.php`,
-            params,
-            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-          )
-        );
-      }
+        return nomeCond && precoCond;
+      })
+      .slice(0, 3) // limita a 3 produtos
 
-      const respostas = await Promise.all(promessas);
-      for (const resp of respostas) {
-        const prods = resp.data.retorno.produtos || [];
-        produtosTotais = produtosTotais.concat(prods);
-      }
-    }
-
-    // 🔍 Limpar e filtrar os produtos
-    let produtosFiltrados = produtosTotais
       .map(p => ({
-        nome: p.produto.nome,
-        preco: parseFloat(p.produto.preco),
-        estoque: parseInt(p.produto.estoque) || 0
-      }))
-      .filter(p => !isNaN(p.preco) && p.estoque > 0);
+        nome: p.nome,
+        preco: p.preco,
+        estoque: p.estoque
+      }));
 
-    // 💵 Aplicar filtro por preço aproximado (tolerância de R$500)
-    if (precoInformado !== null) {
-      produtosFiltrados = produtosFiltrados.filter(p =>
-        p.preco >= precoInformado - 500 && p.preco <= precoInformado + 500
-      );
-    }
-
-    // 🔢 Retornar até 3 produtos ordenados por proximidade de preço
-    if (precoInformado !== null) {
-      produtosFiltrados.sort((a, b) =>
-        Math.abs(a.preco - precoInformado) - Math.abs(b.preco - precoInformado)
-      );
-    }
-
-    const top3 = produtosFiltrados.slice(0, 3);
-
-    res.json(top3);
+    res.json(produtosFiltrados);
   } catch (error) {
     console.error('Erro ao buscar produtos do Tiny:', error.message);
     res.status(500).json({ erro: 'Erro ao buscar produtos do Tiny' });
   }
 });
 
+app.get('/', (req, res) => {
+  res.send('API Tiny está online 🚀');
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando em http://localhost:${PORT}/produtos`);
+});
