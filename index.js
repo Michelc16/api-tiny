@@ -1,15 +1,22 @@
 const express = require('express');
 const axios = require('axios');
-const cors = require('cors'); // Adicione esta linha
+const cors = require('cors'); // Não esqueça de instalar: npm install cors
 const app = express();
 
-// Middlewares
-app.use(cors()); // Habilita CORS
-app.use(express.json());
-
+// Configurações básicas
 const PORT = process.env.PORT || 3001;
 const TINY_TOKEN = 'f4289e0518d5c8c6a4efb59320abf02fa491bda2';
 
+// Middlewares
+app.use(cors());
+app.use(express.json());
+
+// Endpoint Raiz (Health Check)
+app.get('/', (req, res) => {
+  res.send('🟢 API Tiny está online e funcional!');
+});
+
+// Endpoint de Produtos
 app.get('/produtos', async (req, res) => {
   try {
     const nomeFiltro = req.query.nome?.toLowerCase() || '';
@@ -67,4 +74,8 @@ app.get('/produtos', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Servidor rodando na porta ${PORT}`));
+// Inicia o servidor
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
+  console.log(`🔍 Endpoint de produtos: http://localhost:${PORT}/produtos`);
+});
