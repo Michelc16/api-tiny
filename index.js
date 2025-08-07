@@ -1,6 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-<<<<<<< HEAD
 const cors = require('cors'); // Não esqueça de instalar: npm install cors
 const app = express();
 
@@ -18,18 +17,6 @@ app.get('/', (req, res) => {
 });
 
 // Endpoint de Produtos
-=======
-const cors = require('cors'); // Adicione esta linha
-const app = express();
-
-// Middlewares
-app.use(cors()); // Habilita CORS
-app.use(express.json());
-
-const PORT = process.env.PORT || 3001;
-const TINY_TOKEN = 'f4289e0518d5c8c6a4efb59320abf02fa491bda2';
-
->>>>>>> 3fd6222f64733ab189317cb0c992d0552ef722f1
 app.get('/produtos', async (req, res) => {
   try {
     const nomeFiltro = req.query.nome?.toLowerCase() || '';
@@ -87,12 +74,8 @@ app.get('/produtos', async (req, res) => {
   }
 });
 
-<<<<<<< HEAD
 // Inicia o servidor
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
   console.log(`🔍 Endpoint de produtos: http://localhost:${PORT}/produtos`);
 });
-=======
-app.listen(PORT, () => console.log(`🚀 Servidor rodando na porta ${PORT}`));
->>>>>>> 3fd6222f64733ab189317cb0c992d0552ef722f1
