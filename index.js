@@ -1,39 +1,101 @@
 const express = require('express');
 const axios = require('axios');
-const cors = require('cors'); // Adicione esta linha
+const cors = require('cors');
 const app = express();
 
-// Configurações básicas
+// Configurações
 const PORT = process.env.PORT || 3001;
 const TINY_TOKEN = 'f4289e0518d5c8c6a4efb59320abf02fa491bda2';
 
 // Middlewares
-app.use(cors()); // Habilita CORS para todas as rotas
-app.use(express.json()); // Permite parsing de JSON
+app.use(cors());
+app.use(express.json());
 
-// Endpoint Raiz (Health Check)
-app.get('/', (req, res) => {
-  res.status(200).json({
-    status: 'online',
-    message: '🟢 API Tiny está operacional',
-    version: '1.0.0'
-  });
-});
-
-// Endpoint de Produtos (Otimizado para Umbler Talk)
-app.get('/produtos', async (req, res) => {
+/**
+ * Endpoint específico para webhook da Umbler Talk
+ * POST /umbler-webhook
+ */
+app.post('/umbler-webhook', async (req, res) => {
   try {
-    const { nome, preco } = req.query;
+    // 1. Validação básica do payload
+    if (!req.body || !req.body.message) {
+      return res.status(400).json({
+        success: false,
+        error: "Payload inválido. O campo 'message' é obrigatório.",
+        example: {
+          message: "Notebook até R$ 3000",
+          context: {
+            organizationId: "seu-id",
+            userId: "123"
+          }
+        }
+      });
+    }
+
+    const { message, context = {} } = req.body;
+    
+    // 2. Extrai parâmetros da mensagem
+    const { nome, preco } = extractParams(message);
     const nomeFiltro = nome?.toLowerCase() || '';
     const precoDesejado = parseFloat(preco) || null;
 
-    // Requisição para a API Tiny
+    // 3. Busca produtos na API Tiny
+    const produtos = await buscarProdutosTiny(nomeFiltro, precoDesejado);
+
+    // 4. Formata resposta para o chat
+    const respostaFormatada = formatarResposta(produtos, {
+      orcamento: precoDesejado,
+      termoBusca: nomeFiltro
+    });
+
+    // 5. Retorno padronizado para Umbler
+    res.status(200).json({
+      success: true,
+      response: respostaFormatada.textoChat,
+      data: {
+        produtos: respostaFormatada.dadosProdutos,
+        metadata: {
+          termoBusca: nomeFiltro,
+          orcamento: precoDesejado,
+          timestamp: new Date().toISOString()
+        }
+      },
+      actions: [
+        {
+          type: "button",
+          text: "Ver detalhes",
+          value: "detalhes"
+        },
+        {
+          type: "button",
+          text: "Falar com atendente",
+          value: "atendente"
+        }
+      ]
+    });
+
+  } catch (error) {
+    console.error('Erro no webhook:', error);
+    
+    // Resposta de erro padronizada
+    res.status(500).json({
+      success: false,
+      error: "Ocorreu um erro ao processar sua solicitação",
+      userMessage: "Desculpe, estou com dificuldades técnicas. Por favor, tente novamente mais tarde.",
+      technicalDetails: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Função para buscar produtos na API Tiny
+async function buscarProdutosTiny(nome, precoMaximo) {
+  try {
     const response = await axios.post(
       'https://api.tiny.com.br/api2/produtos.pesquisa.php',
       new URLSearchParams({
         token: TINY_TOKEN,
         formato: 'json',
-        pesquisa: nomeFiltro,
+        pesquisa: nome,
         pagina: '1',
         limite: '100'
       }),
@@ -42,72 +104,95 @@ app.get('/produtos', async (req, res) => {
 
     const retorno = response.data.retorno;
     
-    if (!retorno.produtos || retorno.produtos.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: 'Nenhum produto encontrado com os critérios informados',
-        data: []
-      });
-    }
+    if (!retorno.produtos) return [];
 
-    // Processamento dos produtos
-    const produtosFiltrados = retorno.produtos
+    return retorno.produtos
       .map(p => p.produto)
       .filter(p => {
         const nomeProduto = p.nome?.toLowerCase() || '';
-        const nomeCond = nomeProduto.includes(nomeFiltro);
+        const nomeCond = nomeProduto.includes(nome);
         
-        if (!precoDesejado) return nomeCond;
+        if (!precoMaximo) return nomeCond;
         
         const precoProduto = parseFloat(p.preco);
-        const margem = precoDesejado * 0.15;
+        const margem = precoMaximo * 0.15;
         return nomeCond && 
-               (precoProduto >= (precoDesejado - margem) && 
-                precoProduto <= (precoDesejado + margem));
+               (precoProduto >= (precoMaximo - margem) && 
+                precoProduto <= (precoMaximo + margem));
       })
       .sort((a, b) => {
-        const diffA = Math.abs(parseFloat(a.preco) - precoDesejado);
-        const diffB = Math.abs(parseFloat(b.preco) - precoDesejado);
+        const diffA = Math.abs(parseFloat(a.preco) - precoMaximo);
+        const diffB = Math.abs(parseFloat(b.preco) - precoMaximo);
         return diffA - diffB;
       })
-      .slice(0, 3)
+      .slice(0, 5)
       .map(p => ({
         id: p.id,
         nome: p.nome,
         preco: parseFloat(p.preco).toFixed(2),
-        estoque: p.estoque,
+        estoque: p.estoque || 0,
+        disponivel: (p.estoque || 0) > 0,
         url_imagem: p.imagem_thumbnail || null
       }));
-
-    // Formata resposta para Umbler Talk
-    const respostaUmbler = produtosFiltrados.length > 0 
-      ? `Encontrei ${produtosFiltrados.length} produto(s) para você:`
-      : 'Não encontrei produtos com esses critérios.';
-
-    res.status(200).json({
-      success: true,
-      message: respostaUmbler,
-      data: produtosFiltrados,
-      formatted_response: produtosFiltrados.map(p => 
-        `- ${p.nome}: R$ ${p.preco} (Estoque: ${p.estoque})`
-      ).join('\n')
-    });
-
   } catch (error) {
-    console.error('Erro na API:', error.response?.data || error.message);
-    res.status(500).json({
-      success: false,
-      error: 'Erro ao processar sua requisição',
-      details: process.env.NODE_ENV === 'development' 
-        ? error.message 
-        : undefined
-    });
+    console.error('Erro na API Tiny:', error);
+    throw new Error('Falha ao consultar produtos');
   }
+}
+
+// Função para extrair parâmetros da mensagem
+function extractParams(message) {
+  // Extrai valores como "Notebook até R$ 3000"
+  const precoMatch = message.match(/R\$\s*(\d+[\.,]?\d*)/);
+  const preco = precoMatch ? parseFloat(precoMatch[1].replace(',', '.')) : null;
+  
+  const termoMatch = message.match(/^(.*?)(?=\s*(até|por)\s*R\$|$)/);
+  const termo = termoMatch ? termoMatch[0].trim() : null;
+
+  return {
+    nome: termo,
+    preco: preco
+  };
+}
+
+// Função para formatar a resposta
+function formatarResposta(produtos, { orcamento, termoBusca }) {
+  if (produtos.length === 0) {
+    return {
+      textoChat: `Não encontrei produtos ${termoBusca ? `"${termoBusca}"` : ''} ${orcamento ? `até R$ ${orcamento.toFixed(2)}` : ''}. Deseja tentar com outros parâmetros?`,
+      dadosProdutos: []
+    };
+  }
+
+  const textoChat = 
+    `Encontrei ${produtos.length} ${produtos.length === 1 ? 'opção' : 'opções'} ` +
+    `${termoBusca ? `para "${termoBusca}"` : ''} ` +
+    `${orcamento ? `até R$ ${orcamento.toFixed(2)}` : ''}:\n\n` +
+    produtos.map((p, i) => 
+      `${i + 1}. *${p.nome}* - R$ ${p.preco}\n` +
+      `   ${p.disponivel ? `✅ Disponível (${p.estoque} un)` : '❌ Indisponível'}\n` +
+      `   ${p.url_imagem ? `[Ver imagem](${p.url_imagem})` : ''}`
+    ).join('\n\n') +
+    `\n\nDeseja mais informações sobre algum produto?`;
+
+  return {
+    textoChat: textoChat,
+    dadosProdutos: produtos
+  };
+}
+
+// Health Check
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'online',
+    service: 'API Tiny - Webhook Umbler',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Inicia o servidor
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`🔍 Endpoint de produtos: http://localhost:${PORT}/produtos`);
-  console.log(`🔄 Health Check: http://localhost:${PORT}/`);
+  console.log(`🔗 Webhook Umbler: http://localhost:${PORT}/umbler-webhook`);
 });
