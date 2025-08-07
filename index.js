@@ -6,7 +6,7 @@ const app = express();
 // Configurações
 const PORT = process.env.PORT || 3001;
 const TINY_TOKEN = 'f4289e0518d5c8c6a4efb59320abf02fa491bda2';
-const UMBLER_SECRET = 'DEDF807BB2E61F834FE09F20F8080F248D722B433C7534C3AEB88E16801E9B5F'; // Chave para validar webhooks
+const UMBLER_SECRET = 'meu-api-token-atual-2025-08-07-2093-08-25--DEDF807BB2E61F834FE09F20F8080F248D722B433C7534C3AEB88E16801E9B5F'; // Chave para validar webhooks
 
 // Middlewares
 app.use(cors());
